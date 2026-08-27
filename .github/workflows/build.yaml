@@ -2,52 +2,42 @@ name: Auto Releases
 
 on:
   workflow_dispatch:
-    inputs:
-      upload_artifact:
-        description: Upload build output as an Actions artifact instead of a GitHub Release
-        required: true
-        default: false
-        type: boolean
   schedule:
     - cron: "0 0 * * *"
 
 jobs:
-
   check:
-
     outputs:
       should_run: ${{ steps.checker.outputs.should_run }}
-      commit_hash: ${{ steps.latest.outputs.commit_hash }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout this repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4.2.2
         with:
           fetch-tags: true
           fetch-depth: 0
 
-      - name: Get latest hash
-        id: latest
+      - name: Checkout Celeritas
         run: |
-          commit_hash=$(git ls-remote https://git.taumc.org/embeddedt/celeritas.git HEAD | cut -f1)
-          test -n "$commit_hash"
-          echo "commit_hash=$commit_hash" >> "$GITHUB_OUTPUT"
+          git clone https://git.taumc.org/embeddedt/celeritas.git
+
+      - name: Get latest hash
+        working-directory: ./celeritas
+        run: echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
 
       - name: Get previous hash
-        id: previous
-        run: echo "commit_hash=$(cat ./latest_commit)" >> "$GITHUB_OUTPUT"
+        run: echo "PREVIOUS_HASH=$(cat ./latest_commit)" >> $GITHUB_ENV
 
       - name: Check if new commits appear
         id: checker
         run: |
-          if [[ "${{ inputs.upload_artifact }}" == "true" || "${{ steps.latest.outputs.commit_hash }}" != "${{ steps.previous.outputs.commit_hash }}" ]]
+          if [[ "${{ env.COMMIT_HASH }}" == "${{ env.PREVIOUS_HASH }}" ]]
           then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          else
             echo "should_run=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
           fi
-
-
   publish:
     runs-on: ubuntu-latest
     permissions:
@@ -66,33 +56,28 @@ jobs:
 
       - name: Checkout Celeritas
         run: |
-          git clone --depth 1 --no-tags \
-            https://git.taumc.org/embeddedt/celeritas.git
+          git clone https://git.taumc.org/embeddedt/celeritas.git
 
-      - name: Verify source revision
+      - name: Get latest hash
         working-directory: ./celeritas
-        run: |
-          test "$(git rev-parse HEAD)" = "${{ needs.check.outputs.commit_hash }}"
+        run: echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
-      - name: Set commit hash
-        run: echo "COMMIT_HASH=${{ needs.check.outputs.commit_hash }}" >> "$GITHUB_ENV"
+      - name: Get previous hash
+        run: echo "PREVIOUS_HASH=$(cat ./latest_commit)" >> $GITHUB_ENV
 
-      - name: Set Maven version
-        run: |
-          base_version=$(grep '^project_base_version=' ./celeritas/gradle.properties | cut -d= -f2)
-          test -n "$base_version"
-          echo "MAVEN_VERSION=${base_version}.0-autobuild.${COMMIT_HASH:0:8}" >> "$GITHUB_ENV"
+      - name: Get latest describe
+        working-directory: ./celeritas
+        run: echo "LATEST_DESCRIBE=$(git describe --tags)" >> $GITHUB_ENV
 
       - name: Get current date
-        run: echo "CURRENT_DATE=$(date +'%Y%m%dT%H%M%S')" >> "$GITHUB_ENV"
-
-      - name: Set release tag
-        run: echo "RELEASE_TAG=commit-${COMMIT_HASH}-${CURRENT_DATE}" >> "$GITHUB_ENV"
+        run: echo "CURRENT_DATE=$(date +'%Y%m%dT%H%M%S')" >> $GITHUB_ENV
 
       - name: Write release body file
         working-directory: ./celeritas
         run: |
-          echo "Built on commit: [${COMMIT_HASH}](https://git.taumc.org/embeddedt/celeritas/commit/${COMMIT_HASH})" > body.txt
+          echo 'Built on commit: [link](https://git.taumc.org/embeddedt/celeritas/commit/${COMMIT_HASH})' >> body.txt
+          echo >> body.txt
+          git rev-list $PREVIOUS_HASH^..$COMMIT_HASH --pretty >> body.txt
 
       - name: Set up JDK 8
         uses: actions/setup-java@v5
@@ -109,130 +94,23 @@ jobs:
       - name: Fix Gradle permission
         run: chmod +x ./celeritas/gradlew
 
-      - name: Build Jars
+      - name: Build all packaged jars
         working-directory: ./celeritas
-        run: |
-          ./gradlew -Pceleritas_target_versions=1.12.2 \
-            :forge122:packageJar \
-            :forge122:jar \
-            :forge122:sourcesJar
-
-      - name: Collect release Jars
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "Production output:"
-          find celeritas/build/libs -type f -name '*.jar' -print | sort
-          echo "Forge 1.12.2 output:"
-          find celeritas/forge122/build/libs -type f -name '*.jar' -print | sort
-
-          mapfile -t production_jars < <(find celeritas/build/libs -type f -name 'celeritas-forge-mc12.2-*-dev.jar' ! -name '*-dev-dev.jar' | sort)
-          mapfile -t development_jars < <(find celeritas/forge122/build/libs -type f -name 'celeritas-forge-mc12.2-*-dev-dev.jar' | sort)
-          mapfile -t source_jars < <(find celeritas/forge122/build/libs -type f -name 'celeritas-forge-mc12.2-*-sources.jar' | sort)
-
-          printf 'Runnable JARs:\n%s\n' "${production_jars[@]:-<none>}"
-          printf 'Development JARs:\n%s\n' "${development_jars[@]:-<none>}"
-          printf 'Source JARs:\n%s\n' "${source_jars[@]:-<none>}"
-
-          test "${#production_jars[@]}" -eq 1
-          test "${#development_jars[@]}" -eq 1
-          test "${#source_jars[@]}" -eq 1
-
-          mkdir -p artifacts
-          cp "${production_jars[0]}" "artifacts/01-$(basename "${production_jars[0]}")"
-          cp "${development_jars[0]}" "artifacts/02-$(basename "${development_jars[0]}")"
-          cp "${source_jars[0]}" "artifacts/03-$(basename "${source_jars[0]}")"
-
-      - name: Publish Maven artifacts
-        env:
-          OUTLANDS_USR: ${{ secrets.OUTLANDS_USR }}
-          OUTLANDS_PWD: ${{ secrets.OUTLANDS_PWD }}
-        working-directory: ./celeritas
-        run: |
-          set -euo pipefail
-          test -n "$OUTLANDS_USR"
-          test -n "$OUTLANDS_PWD"
-
-          cat > "$RUNNER_TEMP/publish-to-outlands.gradle" <<'EOF'
-          import org.gradle.authentication.http.BasicAuthentication
-          import org.gradle.api.publish.PublishingExtension
-          import org.gradle.api.publish.maven.MavenPublication
-
-          gradle.allprojects { project ->
-              project.plugins.withId("maven-publish") {
-                  if (project.rootProject.name != "celeritas") return
-
-                  project.publishing.repositories.maven {
-                      name = "outlands"
-                      url = uri("https://maven.outlands.top/releases")
-                      credentials {
-                          username = System.getenv("OUTLANDS_USR")
-                          password = System.getenv("OUTLANDS_PWD")
-                      }
-                      authentication {
-                          basic(BasicAuthentication)
-                      }
-                  }
-              }
-          }
-
-          gradle.projectsEvaluated {
-              if (rootProject.name != "celeritas") return
-
-              def forge122 = rootProject.project(":forge122")
-              def common = rootProject.project(":common")
-
-              allprojects {
-                  version = System.getenv("MAVEN_VERSION")
-              }
-
-              def forgePub = forge122.extensions.getByType(PublishingExtension)
-              forgePub.publications.withType(MavenPublication).configureEach {
-                  version = System.getenv("MAVEN_VERSION")
-                  artifact(forge122.tasks.named("jar")) {
-                      classifier = "dev"
-                  }
-              }
-
-              def commonPub = common.extensions.getByType(PublishingExtension)
-              commonPub.publications.withType(MavenPublication).configureEach {
-                  version = System.getenv("MAVEN_VERSION")
-              }
-          }
-          EOF
-
-          ./gradlew \
-            -Pceleritas_target_versions=1.12.2 \
-            --init-script "$RUNNER_TEMP/publish-to-outlands.gradle" \
-            :forge122:publishDefaultPublicationToOutlandsRepository \
-            :common:publishMavenJavaPublicationToOutlandsRepository
+        run: ./gradlew -Pceleritas_target_versions_pattern=.* packageJar
 
       - name: Update hash storage
-        if: inputs.upload_artifact != true
-        run: echo "$COMMIT_HASH" > ./latest_commit
+        run: echo $COMMIT_HASH > ./latest_commit
 
       - name: Commit hash update
-        if: inputs.upload_artifact != true
         uses: EndBug/add-and-commit@v10
         with:
           add: 'latest_commit'
           push: true
-          tag: ${{ env.RELEASE_TAG }}
+          tag: ${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}
 
-      - name: Upload build artifact
-        if: inputs.upload_artifact == true
-        uses: actions/upload-artifact@v7
+      - uses: ncipollo/release-action@v1.21.0
         with:
-          name: celeritas-${{ env.RELEASE_TAG }}
-          path: artifacts/
-          if-no-files-found: error
-
-      - name: Publish GitHub Release
-        if: inputs.upload_artifact != true
-        uses: ncipollo/release-action@v1.21.0
-        with:
-          artifacts: 'artifacts/*.jar'
+          artifacts: 'celeritas/build/libs/**/*.jar'
           generateReleaseNotes: false
           bodyFile: "celeritas/body.txt"
-          tag: ${{ env.RELEASE_TAG }}
+          tag: ${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}
