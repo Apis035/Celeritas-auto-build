@@ -43,7 +43,7 @@ jobs:
     permissions:
       contents: write
     needs: [check]
-    if: needs.check.outputs.should_run == 'true'
+    # if: needs.check.outputs.should_run == 'true'
     steps:
       - name: Debug
         run: echo "${{ needs.check.outputs.should_run }}"
