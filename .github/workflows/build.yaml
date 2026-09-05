@@ -56,7 +56,7 @@ jobs:
 
       - name: Checkout Celeritas
         run: |
-          git clone --depth=1 --no-tags https://git.taumc.org/embeddedt/celeritas.git
+          git clone --depth=1 https://git.taumc.org/embeddedt/celeritas.git
 
       - name: Get latest hash
         working-directory: ./celeritas
