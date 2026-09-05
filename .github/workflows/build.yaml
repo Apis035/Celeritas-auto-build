@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout this repository
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v6
         with:
           fetch-tags: true
           fetch-depth: 0
@@ -56,7 +56,7 @@ jobs:
 
       - name: Checkout Celeritas
         run: |
-          git clone https://git.taumc.org/embeddedt/celeritas.git
+          git clone --depth=1 --no-tags https://git.taumc.org/embeddedt/celeritas.git
 
       - name: Get latest hash
         working-directory: ./celeritas
@@ -108,7 +108,7 @@ jobs:
           push: true
           tag: ${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}
 
-      - uses: ncipollo/release-action@v1.21.0
+      - uses: ncipollo/release-action@v1
         with:
           artifacts: 'celeritas/build/libs/**/*.jar'
           generateReleaseNotes: false
