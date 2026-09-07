@@ -2,28 +2,23 @@ name: Auto Releases
 
 on:
   workflow_dispatch:
-
+  
   schedule:
     - cron: "0 0 * * *"
 
-
 permissions:
   contents: write
-
 
 jobs:
   build:
     name: Check, build, release
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-
       - name: Clone Celeritas
-        run: git clone --depth 1 https://git.taumc.org/embeddedt/celeritas.git
-
+        run: git clone https://git.taumc.org/embeddedt/celeritas.git
 
       - name: Check for updates
         id: check
@@ -45,11 +40,9 @@ jobs:
 
           echo "commit=$CURRENT_COMMIT" >> "$GITHUB_OUTPUT"
 
-
       - name: Stop if Celeritas has no updates
         if: steps.check.outputs.changed == 'false'
         run: echo "Nothing to build."
-
 
       - name: Get release information
         if: steps.check.outputs.changed == 'true'
@@ -58,7 +51,6 @@ jobs:
           echo "LATEST_DESCRIBE=$(git describe --tags)" >> "$GITHUB_ENV"
           echo "CURRENT_DATE=$(date +'%Y%m%dT%H%M%S')" >> "$GITHUB_ENV"
 
-
       - name: Create release notes
         if: steps.check.outputs.changed == 'true'
         working-directory: ./celeritas
@@ -66,11 +58,9 @@ jobs:
           CURRENT_COMMIT="${{ steps.check.outputs.commit }}"
           PREVIOUS_COMMIT=$(cat ../latest_commit)
 
-          echo "Built on commit: [${CURRENT_COMMIT}](https://git.taumc.org/embeddedt/celeritas/commit/${CURRENT_COMMIT})" > body.txt
-          echo >> body.txt
-
-          git rev-list "$PREVIOUS_COMMIT^..$CURRENT_COMMIT" --pretty >> body.txt
-
+          echo "## What's Changed" >> body.md
+          git rev-list $PREVIOUS_COMMIT..$CURRENT_COMMIT --no-commit-header --format="format:- %s by @%an" >> body.md
+          echo "**Full Changelog:** [link](https://git.taumc.org/embeddedt/celeritas/compare/$CURRENT_COMMIT..$PREVIOUS_COMMIT) >> body.md
 
       - name: Set up JDK 8
         if: steps.check.outputs.changed == 'true'
@@ -78,14 +68,13 @@ jobs:
         with:
           java-version: '8'
           distribution: temurin
-
+          
       - name: Set up JDK 21
         if: steps.check.outputs.changed == 'true'
         uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: temurin
-
 
       - name: Build all versions
         if: steps.check.outputs.changed == 'true'
@@ -94,11 +83,9 @@ jobs:
           chmod +x ./celeritas/gradlew
           ./gradlew -Pceleritas_target_versions_pattern=.* packageJar
 
-
       - name: Update latest commit hash
         if: steps.check.outputs.changed == 'true'
         run: echo "${{ steps.check.outputs.commit }}" > latest_commit
-
 
       - name: Commit latest commit hash
         if: steps.check.outputs.changed == 'true'
@@ -108,12 +95,11 @@ jobs:
           push: true
           tag: "${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}"
 
-
       - name: Create GitHub release
         if: steps.check.outputs.changed == 'true'
         uses: ncipollo/release-action@v1.21.0
         with:
           artifacts: "celeritas/build/libs/**/*.jar"
-          bodyFile: "celeritas/body.txt"
+          bodyFile: "celeritas/body.md"
           generateReleaseNotes: false
           tag: "${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}"
