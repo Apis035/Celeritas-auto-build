@@ -2,115 +2,118 @@ name: Auto Releases
 
 on:
   workflow_dispatch:
+
   schedule:
     - cron: "0 0 * * *"
 
+
+permissions:
+  contents: write
+
+
 jobs:
-  check:
-    outputs:
-      should_run: ${{ steps.checker.outputs.should_run }}
+  build:
+    name: Check, build, release
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout this repository
+      - name: Checkout repository
         uses: actions/checkout@v6
-        with:
-          fetch-tags: true
-          fetch-depth: 0
 
-      - name: Checkout Celeritas
-        run: |
-          git clone https://git.taumc.org/embeddedt/celeritas.git
 
-      - name: Get latest hash
+      - name: Clone Celeritas
+        run: git clone --depth:1 https://git.taumc.org/embeddedt/celeritas.git
+
+
+      - name: Check for updates
+        id: check
         working-directory: ./celeritas
-        run: echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
-
-
-      - name: Get previous hash
-        run: echo "PREVIOUS_HASH=$(cat ./latest_commit)" >> $GITHUB_ENV
-
-      - name: Check if new commits appear
-        id: checker
         run: |
-          if [[ "${{ env.COMMIT_HASH }}" == "${{ env.PREVIOUS_HASH }}" ]]
-          then
-            echo "should_run=false" >> $GITHUB_OUTPUT
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          PREVIOUS_COMMIT=$(cat ../latest_commit)
+
+          echo "Current commit: $CURRENT_COMMIT"
+          echo "Previous commit: $PREVIOUS_COMMIT"
+
+          if [[ "$CURRENT_COMMIT" == "$PREVIOUS_COMMIT" ]]; then
+            echo "Celeritas has not changed."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Celeritas has changed."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-  publish:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    needs: [check]
-    # if: needs.check.outputs.should_run == 'true'
-    steps:
-      - name: Debug
-        run: echo "${{ needs.check.outputs.should_run }}"
 
-      - name: Checkout this repository
-        uses: actions/checkout@v6
-        with:
-          fetch-tags: true
-          fetch-depth: 0
+          echo "commit=$CURRENT_COMMIT" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout Celeritas
-        run: |
-          git clone --depth=1 https://git.taumc.org/embeddedt/celeritas.git
 
-      - name: Get latest hash
-        working-directory: ./celeritas
-        run: echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
+      - name: Stop if Celeritas has no updates
+        if: steps.check.outputs.changed == 'false'
+        run: echo "Nothing to build."
 
-      - name: Get previous hash
-        run: echo "PREVIOUS_HASH=$(cat ./latest_commit)" >> $GITHUB_ENV
 
-      - name: Get latest describe
-        working-directory: ./celeritas
-        run: echo "LATEST_DESCRIBE=$(git describe --tags)" >> $GITHUB_ENV
-
-      - name: Get current date
-        run: echo "CURRENT_DATE=$(date +'%Y%m%dT%H%M%S')" >> $GITHUB_ENV
-
-      - name: Write release body file
+      - name: Get release information
+        if: steps.check.outputs.changed == 'true'
         working-directory: ./celeritas
         run: |
-          echo 'Built on commit: [link](https://git.taumc.org/embeddedt/celeritas/commit/${COMMIT_HASH})' >> body.txt
+          echo "LATEST_DESCRIBE=$(git describe --tags)" >> "$GITHUB_ENV"
+          echo "CURRENT_DATE=$(date +'%Y%m%dT%H%M%S')" >> "$GITHUB_ENV"
+
+
+      - name: Create release notes
+        if: steps.check.outputs.changed == 'true'
+        working-directory: ./celeritas
+        run: |
+          CURRENT_COMMIT="${{ steps.check.outputs.commit }}"
+          PREVIOUS_COMMIT=$(cat ../latest_commit)
+
+          echo "Built on commit: [${CURRENT_COMMIT}](https://git.taumc.org/embeddedt/celeritas/commit/${CURRENT_COMMIT})" > body.txt
           echo >> body.txt
-          git rev-list $PREVIOUS_HASH^..$COMMIT_HASH --pretty >> body.txt
+
+          git rev-list "$PREVIOUS_COMMIT^..$CURRENT_COMMIT" --pretty >> body.txt
+
 
       - name: Set up JDK 8
+        if: steps.check.outputs.changed == 'true'
         uses: actions/setup-java@v5
         with:
           java-version: '8'
-          distribution: 'temurin'
+          distribution: temurin
 
       - name: Set up JDK 21
+        if: steps.check.outputs.changed == 'true'
         uses: actions/setup-java@v5
         with:
           java-version: '21'
-          distribution: 'temurin'
+          distribution: temurin
 
-      - name: Fix Gradle permission
-        run: chmod +x ./celeritas/gradlew
 
-      - name: Build all packaged jars
+      - name: Build all versions
+        if: steps.check.outputs.changed == 'true'
         working-directory: ./celeritas
-        run: ./gradlew -Pceleritas_target_versions_pattern=.* packageJar
+        run: |
+          chmod +x ./celeritas/gradlew
+          ./gradlew -Pceleritas_target_versions_pattern=.* packageJar
 
-      - name: Update hash storage
-        run: echo $COMMIT_HASH > ./latest_commit
 
-      - name: Commit hash update
+      - name: Update latest commit hash
+        if: steps.check.outputs.changed == 'true'
+        run: echo "${{ steps.check.outputs.commit }}" > latest_commit
+
+
+      - name: Commit latest commit hash
+        if: steps.check.outputs.changed == 'true'
         uses: EndBug/add-and-commit@v10
         with:
-          add: 'latest_commit'
+          add: latest_commit
           push: true
-          tag: ${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}
+          tag: "${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}"
 
-      - uses: ncipollo/release-action@v1
+
+      - name: Create GitHub release
+        if: steps.check.outputs.changed == 'true'
+        uses: ncipollo/release-action@v1.21.0
         with:
-          artifacts: 'celeritas/build/libs/**/*.jar'
-          generateReleaseNotes: false
+          artifacts: "celeritas/build/libs/**/*.jar"
           bodyFile: "celeritas/body.txt"
-          tag: ${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}
+          generateReleaseNotes: false
+          tag: "${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}"
