@@ -59,8 +59,9 @@ jobs:
           PREVIOUS_COMMIT=$(cat ../latest_commit)
 
           echo "## What's Changed" >> body.md
-          git rev-list $PREVIOUS_COMMIT..$CURRENT_COMMIT --no-commit-header --format="format:- %s by @%an" >> body.md
-          echo "**Full Changelog:** [link](https://git.taumc.org/embeddedt/celeritas/compare/$CURRENT_COMMIT..$PREVIOUS_COMMIT)" >> body.md
+          git rev-list $PREVIOUS_COMMIT..$CURRENT_COMMIT --no-commit-header --format="format:- %s by **[@%an](https://git.taumc.org/%an)**" --reverse >> body.md
+          echo >> body.md
+          echo "### [Full Changelog](https://git.taumc.org/embeddedt/celeritas/compare/$CURRENT_COMMIT..$PREVIOUS_COMMIT)" >> body.md
 
       - name: Set up JDK 8
         if: steps.check.outputs.changed == 'true'
