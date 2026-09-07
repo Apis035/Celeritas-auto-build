@@ -81,7 +81,7 @@ jobs:
         working-directory: ./celeritas
         run: |
           chmod +x ./gradlew
-          ./gradlew -Pforge_1_16_5=1.16.5-36.2.42 -Pceleritas_target_versions_pattern=.* packageJar
+          ./gradlew -Pceleritas_target_versions_pattern=1.20.1 packageJar
 
       - name: Update latest commit hash
         if: steps.check.outputs.changed == 'true'
