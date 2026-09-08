@@ -49,7 +49,7 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         working-directory: ./celeritas
         run: |
-          echo "describe=$(git describe --tags)" >> "$GITHUB_OUTPUT"
+          echo "describe=$(git describe --tags | sed "s/-g[0-9a-f]*$//")" >> "$GITHUB_OUTPUT"
 
       - name: Create release notes
         if: steps.check.outputs.changed == 'true'
