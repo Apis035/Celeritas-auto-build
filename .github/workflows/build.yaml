@@ -45,11 +45,11 @@ jobs:
         run: echo "Nothing to build."
 
       - name: Get release information
+        id: info
         if: steps.check.outputs.changed == 'true'
         working-directory: ./celeritas
         run: |
-          echo "LATEST_DESCRIBE=$(git describe --tags)" >> "$GITHUB_ENV"
-          echo "CURRENT_DATE=$(date +'%Y%m%dT%H%M%S')" >> "$GITHUB_ENV"
+          echo "describe=$(git describe --tags)" >> "$GITHUB_OUTPUT"
 
       - name: Create release notes
         if: steps.check.outputs.changed == 'true'
@@ -61,22 +61,17 @@ jobs:
           echo "## What's Changed" >> body.md
           git rev-list $PREVIOUS_COMMIT..$CURRENT_COMMIT --no-commit-header --format="format:- %s by **[@%an](https://git.taumc.org/%an)**" --reverse >> body.md
           echo >> body.md
-          echo "### [Full Changelog](https://git.taumc.org/embeddedt/celeritas/compare/$CURRENT_COMMIT..$PREVIOUS_COMMIT)" >> body.md
+          echo "### [Full Changelog](https://git.taumc.org/embeddedt/celeritas/compare/$PREVIOUS_COMMIT..$CURRENT_COMMIT)" >> body.md
 
-      - name: Set up JDK 8
+      - name: Set up JDK
         if: steps.check.outputs.changed == 'true'
         uses: actions/setup-java@v5
         with:
-          java-version: '8'
           distribution: temurin
-          
-      - name: Set up JDK 21
-        if: steps.check.outputs.changed == 'true'
-        uses: actions/setup-java@v5
-        with:
-          java-version: '21'
-          distribution: temurin
-
+          java-version: |
+            8
+            21
+            
       - name: Build all versions
         if: steps.check.outputs.changed == 'true'
         working-directory: ./celeritas
@@ -94,7 +89,7 @@ jobs:
         with:
           add: latest_commit
           push: true
-          tag: "${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}"
+          tag: "${{ steps.info.outputs.describe }}"
 
       - name: Create GitHub release
         if: steps.check.outputs.changed == 'true'
@@ -103,4 +98,4 @@ jobs:
           artifacts: "celeritas/build/libs/**/*.jar"
           bodyFile: "celeritas/body.md"
           generateReleaseNotes: false
-          tag: "${{ env.LATEST_DESCRIBE }}-${{ env.CURRENT_DATE }}"
+          tag: "${{ steps.info.outputs.describe }}"
