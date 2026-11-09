@@ -1,20 +1,25 @@
-# Celeritas-auto-build 
+# Celeritas Build
 
-Auto build of [Celeritas](https://git.taumc.org/embeddedt/celeritas), a fork of Iris 1.7 and Sodium 0.5.11 made to work on almost every Minecraft version.
+Auto build of [Celeritas](https://git.taumc.org/embeddedt/celeritas), a fork of Iris and Sodium 0.5.11 made to work on almost every Minecraft version. For more information, check Celeritas repository readme.
 
-This repository builds Celeritas for Minecraft 1.20.1, other version will follow up soon™ when I can figure out why 1.16.5 build is failing. For Minecraft 1.12.2, check [here](https://github.com/kappa-maintainer/Celeritas-auto-build).
+> [!IMPORTANT]
+> Celeritas build provided here are unofficial. No support is provided for using these files.
 
-## Usage on Minecraft 1.20.1
+## Supported Versions
 
-I've tried playing some 1.20.1 modpacks using Celeritas with not much issues and it performs much better than Embeddium or any other Sodium forks. ([DeceasedCraft](https://www.curseforge.com/minecraft/modpacks/deceasedcraft), [Star Technology](https://www.curseforge.com/minecraft/modpacks/star-technology), [Reclamation](https://www.curseforge.com/minecraft/modpacks/reclamation-reclaim-the-world))
+| Minecraft  | Forge | Fabric | NeoForge | Other |                    |
+|------------|-------|--------|----------|-------|--------------------|
+| Beta 1.7.3 |       |        |          | ✅    |                    |
+| Beta 1.8.1 |       |        |          | ✅    |                    |
+| 1.2.5      |       |        |          | ✅    |                    |
+| 1.7.10     | ✅    |        |          | ✅    | Use [Angelica](https://github.com/GTNewHorizons/Angelica) instead |
+| 1.8.9      |       |        |          | ✅    |                    |
+| 1.12.2     | ✅    |        |          |       | Use with [CleanroomMC](https://cleanroommc.com/) |
+| 1.16.5     | ✅    |        |          |       |                    |
+| 1.18.2     | ✅    |        |          |       |                    |
+| 1.20.1     | ✅    | ✅     |          |       |                    |
+| 1.21.1     |       | ✅     | ✅       |       |                    |
+| 26.1       |       |        | ✅       |       |                    |
 
-What you need to do is drop Celeritas jar file into mods folder and disable any of these mods if they exist:
-- Embeddium
-- Oculus
-- Oculus Flywheel Compat
-- Colorwheel
-- Sodium Options API
-- Sodium Extras
-- Sodium Dynamic Lights
-- Chloride
-- any other mods that depends on these mods
+> [!NOTE]
+> Not all of these builds are tested, they may not work correctly.
